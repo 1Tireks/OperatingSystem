@@ -39,7 +39,7 @@ int main() {
     }
     buffer[bytes_read - 1] = '\0';
 
-    int file1_fd = open(buffer, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int file1_fd = open(buffer, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0600);
     if (file1_fd == -1) {
         print_error("Ошибка при открытии файла для child1.\n");
     }
@@ -52,7 +52,7 @@ int main() {
     }
     buffer[bytes_read - 1] = '\0';
 
-    int file2_fd = open(buffer, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int file2_fd = open(buffer, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0600);
     if (file2_fd == -1) {
         print_error("Ошибка при открытии файла для child2.\n");
     }
