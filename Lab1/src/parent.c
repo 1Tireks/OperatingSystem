@@ -62,19 +62,29 @@ int main() {
         print_error("Ошибка при создании дочернего процесса child1");
     } else if (pid1 == 0) { // Первый дочерний процесс (child1)
         close(pipe1[1]);
+        close(pipe2[0]);
+        close(pipe2[1]);
+        close(file2_fd);
         dup2(pipe1[0], STDIN_FILENO); // Читаем из pipe1
         dup2(file1_fd, STDOUT_FILENO); // Пишем в файл для child1
+        close(pipe1[0]);
+        close(file1_fd);
         execl("./child1", "./child1", NULL);
         print_error("Ошибка при запуске программы первого дочернего процесса.\n");
     } 
 
     pid_t pid2 = fork();
-    if (pid1 == -1) {
+    if (pid2 == -1) {
         print_error("Ошибка при создании дочернего процесса child2");
     } else if (pid2 == 0) { // Второй дочерний процесс (child2)
         close(pipe2[1]);
+        close(pipe1[0]);
+        close(pipe1[1]);
+        close(file1_fd);
         dup2(pipe2[0], STDIN_FILENO); // Читаем из pipe2
         dup2(file2_fd, STDOUT_FILENO); // Пишем в файл для child2
+        close(pipe2[0]);
+        close(file2_fd);
         execl("./child2", "./child2", NULL);
         print_error("Ошибка при запуске программы второго дочернего процесса.\n");
     } 
@@ -87,7 +97,8 @@ int main() {
 
     print_message("Вводите строчечки:\n");
 
-    while ((bytes_read = read(STDIN_FILENO, buffer, BUFFER_SIZE)) > 0) {
+    for (int i = 0; i < 10; i++) {
+        bytes_read = read(STDIN_FILENO, buffer, BUFFER_SIZE);
         if (((double)rand() / RAND_MAX) < PROBABILITY) {
             if (write(pipe1[1], buffer, bytes_read) != bytes_read) {
                 print_error("Ошибка при записи в pipe1.\n");
@@ -102,8 +113,12 @@ int main() {
     close(pipe1[1]);
     close(pipe2[1]);
 
-    wait(NULL);
-    wait(NULL);
+    if (wait(NULL) == -1) {
+        print_error("Ошибка при ожидании завершения дочернего процесса.\\n");
+    }
+    if (wait(NULL) == -1) {
+        print_error("Ошибка при ожидании завершения дочернего процесса.\\n");
+    }
 
     return 0;
 }
