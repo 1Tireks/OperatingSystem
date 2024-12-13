@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -101,7 +100,8 @@ int main() {
     char string[MAX_LENGTH];
     int counter = 0;
     while (fgets(string, MAX_LENGTH, stdin)) {
-        int child_index = counter % 2;
+        int random_number = rand() % 100;
+        int child_index = random_number < 80 ? 0 : 1;
         sem_wait(semaphores[child_index][1]);
 
         strcpy(mmapped_file_pointers[child_index], string);
