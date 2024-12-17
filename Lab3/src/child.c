@@ -1,78 +1,92 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
 #include <sys/mman.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <semaphore.h>
 
-const int MAX_LENGTH = 255;
+#define SHM_NAME "/shared_memory"
+#define BUFFER_SIZE 4096
 
-int main(int argc, char* argv[]) {
-    char file_name[MAX_LENGTH];
-    char mmapped_file_name[MAX_LENGTH];
-    strcpy(file_name, argv[1]);
-    strcpy(mmapped_file_name, argv[2]);
+typedef struct {
+    char buffer1[BUFFER_SIZE];
+    char buffer2[BUFFER_SIZE];
+    sem_t sem_parent;
+    sem_t sem_child1;
+    sem_t sem_child2;
+    bool exit_flag;
+} SharedMemory;
 
-    char semaphore_name[MAX_LENGTH];
-    strcpy(semaphore_name, argv[3]);
-    char semaphoreForParent_name[MAX_LENGTH];
-    strcpy(semaphoreForParent_name, argv[4]);
+void delete_vowels(char *str) {
+    if (!str) return;
 
-    int file_descriptor = open(file_name, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
-    if (file_descriptor == -1) {
-        perror("open");
+    const char *vowels = "AEIOUYaeiouy";
+    size_t j = 0;
+    for (size_t i = 0; str[i] != '\0'; ++i) {
+        if (!strchr(vowels, str[i])) {
+            str[j++] = str[i];
+        }
+    }
+    str[j] = '\0';
+}
+
+int main(int argc, char **argv) {
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <child_id> <output_file>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
-    int mmapped_file_descriptor = shm_open(mmapped_file_name, O_RDWR, 0777);
-    if (mmapped_file_descriptor == -1) {
+    int shm_fd = shm_open(SHM_NAME, O_RDWR, 0600);
+    if (shm_fd == -1) {
         perror("shm_open");
         exit(EXIT_FAILURE);
     }
 
-    char* mmapped_file_pointer = mmap(NULL, MAX_LENGTH, PROT_READ | PROT_WRITE, MAP_SHARED, mmapped_file_descriptor, 0);
-    if (mmapped_file_pointer == MAP_FAILED) {
+    SharedMemory *shm = mmap(NULL, sizeof(SharedMemory), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (shm == MAP_FAILED) {
         perror("mmap");
         exit(EXIT_FAILURE);
     }
 
-    sem_t* semaphore = sem_open(semaphore_name, 0);
-    if (semaphore == SEM_FAILED) {
-        perror("sem_open");
+    int output_file = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (output_file == -1) {
+        perror("open");
         exit(EXIT_FAILURE);
     }
 
-    sem_t* semaphoreForParent = sem_open(semaphoreForParent_name, 0);
-    if (semaphoreForParent == SEM_FAILED) {
-        perror("sem_open");
-        exit(EXIT_FAILURE);
+    sem_t *my_sem;
+    char *my_buffer;
+
+    if (strcmp(argv[1], "child1") == 0) {
+        my_sem = &shm->sem_child1;
+        my_buffer = shm->buffer1;
+    } else {
+        my_sem = &shm->sem_child2;
+        my_buffer = shm->buffer2;
     }
 
-    char vowels[] = {'a', 'e', 'i', 'o', 'u', 'y', 'A', 'E', 'I', 'O', 'U', 'Y'};
-    char string[MAX_LENGTH];
-    while (1) {
-        sem_wait(semaphore);
+    while (true) {
+        sem_wait(my_sem);
 
-        strcpy(string, mmapped_file_pointer);
+        if (shm->exit_flag) break;
 
-        sem_post(semaphoreForParent);
+        delete_vowels(my_buffer);
 
-        if (strlen(string) == 0) {
-            break;
+        size_t len = strlen(my_buffer);
+        if (write(output_file, my_buffer, len) == -1) {
+            perror("write");
+            exit(EXIT_FAILURE);
         }
 
-        for (int index = 0; index < strlen(string); ++index) {
-            if (memchr(vowels, string[index], sizeof(vowels)) == NULL) {
-                write(file_descriptor, &string[index], 1);
-            }
-        }
+        write(output_file, "\n", 1);
+
+        sem_post(&shm->sem_parent);
     }
 
-    munmap(mmapped_file_pointer, MAX_LENGTH);
-    sem_close(semaphore);
-    sem_close(semaphoreForParent);
-    close(file_descriptor);
-
+    close(output_file);
+    munmap(shm, sizeof(SharedMemory));
     return 0;
 }
