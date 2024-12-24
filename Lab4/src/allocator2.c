@@ -19,7 +19,7 @@ BuddyAllocator* buddy_allocator_create(void *const memory, const size_t size) {
     allocator->memory = memory;
     allocator->size = size;
     allocator->free_list = memory;
-    *((void**)allocator->free_list) = NULL; // Изначально вся память свободна
+    *((void**)allocator->free_list) = NULL;
 
     return allocator;
 }
@@ -30,11 +30,11 @@ void buddy_allocator_destroy(BuddyAllocator *const allocator) {
 }
 
 void* buddy_allocator_alloc(BuddyAllocator *const allocator, const size_t size) {
-    // Простейшая реализация — выдаем из начала списка
+
     if (allocator->free_list == NULL || size > allocator->size) return NULL;
 
     void *block = allocator->free_list;
-    allocator->free_list = *((void**)block); // Перемещаем указатель на следующий свободный блок
+    allocator->free_list = *((void**)block);
     return block;
 }
 
