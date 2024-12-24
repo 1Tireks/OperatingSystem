@@ -35,7 +35,7 @@ void delete_vowels(char *str) {
 
 int main(int argc, char **argv) {
     if (argc != 3) {
-        fprintf(stderr, "Usage: %s <child_id> <output_file>\n", argv[0]);
+        fprintf(stderr, "Usage: <path> <child_id> <output_file>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    sem_t *my_sem;
+    sem_t* my_sem;
     char *my_buffer;
 
     if (strcmp(argv[1], "child1") == 0) {
@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
     }
 
     while (true) {
-        sem_wait(my_sem);
+        sem_wait(&my_sem);
 
         if (shm->exit_flag) break;
 

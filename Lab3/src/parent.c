@@ -8,9 +8,14 @@
 #include <string.h>
 #include <semaphore.h>
 #include <sys/wait.h>
+#include <errno.h>
 
-#define SHM_NAME "/shared_memory"
+#define SHM_NAME "/shared_memory111"
 #define BUFFER_SIZE 4096
+
+void print_message(const char *msg) {
+    write(STDERR_FILENO, msg, strlen(msg));
+}
 
 typedef struct {
     char buffer1[BUFFER_SIZE];
@@ -23,9 +28,11 @@ typedef struct {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s file1 file2\n", argv[0]);
+        print_message("Usage: path file1 file2\n");
         exit(EXIT_FAILURE);
     }
+
+    srand(getpid());
 
     int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0600);
     if (shm_fd == -1) {
@@ -67,11 +74,13 @@ int main(int argc, char **argv) {
     while (true) {
         sem_wait(&shm->sem_parent);
 
-        printf("Input strings (press ENTER to exit): ");
-        if (fgets(input, sizeof(input), stdin) == NULL) {
-            perror("fgets");
+        print_message("Input strings (press ENTER to exit): ");
+        int bytes_read = read(STDIN_FILENO, input, BUFFER_SIZE);
+        if (bytes_read <= 0) {
+            perror("read");
             continue;
         }
+        input[bytes_read - 1] = '\0';
 
         size_t len = strlen(input);
         if (len > 0 && input[len - 1] == '\n') {
