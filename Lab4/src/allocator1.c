@@ -1,50 +1,100 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <string.h>
 #include <sys/mman.h>
-#include <dlfcn.h>
+#include <unistd.h>
+
+#define PAGE_SIZE 4096
+#define MIN_BLOCK_SIZE 16
 
 typedef struct {
-    void *memory;
-    size_t size;
-    size_t block_size;
-    void *free_list;
-} Allocator;
+    unsigned char *memory;
+    size_t total_size;
+    size_t num_blocks;
+    unsigned char *bitmap;
+    size_t bitmap_size;
+} McKusickKarelsAllocator;
 
-Allocator* allocator_create(void *const memory, const size_t size, const size_t block_size) {
-    Allocator *allocator = mmap(NULL, sizeof(Allocator), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+static size_t calculate_bitmap_size(size_t num_blocks) {
+    return (num_blocks + 7) / 8;
+}
+
+McKusickKarelsAllocator *allocator_create(size_t size) {
+    size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1); 
+    size_t num_blocks = size / MIN_BLOCK_SIZE;
+    size_t bitmap_size = calculate_bitmap_size(num_blocks);
+
+    McKusickKarelsAllocator *allocator = mmap(NULL, sizeof(McKusickKarelsAllocator),
+                                              PROT_READ | PROT_WRITE, 
+                                              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
     if (allocator == MAP_FAILED) {
         perror("mmap");
         return NULL;
     }
-    allocator->memory = memory;
-    allocator->size = size;
-    allocator->block_size = block_size;
-    allocator->free_list = memory;
 
-    char *current = (char*)memory;
-    for (size_t i = 0; i < size / block_size; ++i) {
-        *((void**)current) = (void*)(current + block_size);
-        current += block_size;
+    allocator->memory = mmap(NULL, size, PROT_READ | PROT_WRITE, 
+                             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+    if (allocator->memory == MAP_FAILED) {
+        perror("mmap");
+        munmap(allocator, sizeof(McKusickKarelsAllocator));
+        return NULL;
     }
+
+    allocator->bitmap = mmap(NULL, bitmap_size, PROT_READ | PROT_WRITE, 
+                             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+    if (allocator->bitmap == MAP_FAILED) {
+        perror("mmap");
+        munmap(allocator->memory, size);
+        munmap(allocator, sizeof(McKusickKarelsAllocator));
+        return NULL;
+    }
+
+    allocator->total_size = size;
+    allocator->num_blocks = num_blocks;
+    allocator->bitmap_size = bitmap_size;
+
+    memset(allocator->bitmap, 0xFF, bitmap_size); 
 
     return allocator;
 }
 
-void allocator_destroy(Allocator *const allocator) {
-    munmap(allocator->memory, allocator->size);
-    munmap(allocator, sizeof(Allocator));
+void *allocator_alloc(McKusickKarelsAllocator *allocator, size_t size) {
+    size_t blocks_needed = (size + MIN_BLOCK_SIZE - 1) / MIN_BLOCK_SIZE;
+
+    for (size_t i = 0; i < allocator->num_blocks - blocks_needed + 1;) {
+        size_t j;
+        for (j = 0; j < blocks_needed; j++) {
+            if (!(allocator->bitmap[(i + j) / 8] & (1 << ((i + j) % 8)))) {
+                break;
+            }
+        }
+
+        if (j == blocks_needed) { 
+            for (j = 0; j < blocks_needed; j++) {
+                allocator->bitmap[(i + j) / 8] &= ~(1 << ((i + j) % 8)); 
+            }
+            return allocator->memory + i * MIN_BLOCK_SIZE;
+        }
+        i += j + 1; 
+    }
+
+    return NULL; 
 }
 
-void* allocator_alloc(Allocator *const allocator, const size_t size) {
-    if (allocator->free_list == NULL || size > allocator->block_size) return NULL;
+void allocator_free(McKusickKarelsAllocator *allocator, void *ptr, size_t size) {
+    size_t blocks_to_free = (size + MIN_BLOCK_SIZE - 1) / MIN_BLOCK_SIZE;
+    size_t start_index = ((unsigned char *)ptr - allocator->memory) / MIN_BLOCK_SIZE;
 
-    void *block = allocator->free_list;
-    allocator->free_list = *((void**)block);
-    return block;
+    for (size_t i = start_index; i < start_index + blocks_to_free; i++) {
+        allocator->bitmap[i / 8] |= (1 << (i % 8));
+    }
 }
 
-void allocator_free(Allocator *const allocator, void *const memory) {
-    *((void**)memory) = allocator->free_list;
-    allocator->free_list = memory;
+void allocator_destroy(McKusickKarelsAllocator *allocator) {
+    munmap(allocator->bitmap, allocator->bitmap_size);
+    munmap(allocator->memory, allocator->total_size);
+    munmap(allocator, sizeof(McKusickKarelsAllocator));
 }
