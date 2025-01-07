@@ -19,7 +19,7 @@ static size_t calculate_bitmap_size(size_t num_blocks) {
     return (num_blocks + 7) / 8;
 }
 
-McKusickKarelsAllocator *allocator_create(size_t size) {
+McKusickKarelsAllocator *allocator_create(void *const memory, size_t size) {
     size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1); 
     size_t num_blocks = size / MIN_BLOCK_SIZE;
     size_t bitmap_size = calculate_bitmap_size(num_blocks);
@@ -33,14 +33,7 @@ McKusickKarelsAllocator *allocator_create(size_t size) {
         return NULL;
     }
 
-    allocator->memory = mmap(NULL, size, PROT_READ | PROT_WRITE, 
-                             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-
-    if (allocator->memory == MAP_FAILED) {
-        perror("mmap");
-        munmap(allocator, sizeof(McKusickKarelsAllocator));
-        return NULL;
-    }
+    allocator->memory = memory;
 
     allocator->bitmap = mmap(NULL, bitmap_size, PROT_READ | PROT_WRITE, 
                              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
